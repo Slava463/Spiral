@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Белая спираль на чёрном фоне · Высокое качество</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000000;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-overlay {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            color: #ffffff;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+            z-index: 20;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px);
+            padding: 12px 28px;
+            border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.3);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .ui-overlay span {
+            font-weight: bold;
+            color: #ffd966;
+            font-size: 1.5rem;
+            margin: 0 6px;
+        }
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: #ffffff;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: 0.3s;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: #ffffff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        button.active {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+        .status {
+            position: fixed;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 22px;
+            border-radius: 20px;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            z-index: 20;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* Только на телефонах в landscape скрываем элементы */
+        @media (max-width: 932px) and (orientation: landscape) {
+            .ui-overlay {
+                display: none;
+            }
+            .status {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="status" id="statusMsg">Спираль — рисуется</div>
+    <div class="ui-overlay">
+        <div>🌀 Витков: <span id="spiralCounter">0</span></div>
+        <button id="restartButton">↺ Начать заново</button>
+        <button id="soundToggle" class="active">🔊 Эпичный звук</button>
+    </div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const counterEl = document.getElementById('spiralCounter');
+            const statusEl = document.getElementById('statusMsg');
+            const soundToggle = document.getElementById('soundToggle');
+
+            // ----- НАСТРОЙКИ СПИРАЛИ -----
+            const START_RADIUS = 5;
+            const RADIUS_GROWTH = 5;
+            const DRAW_SPEED = 1;
+            const MAX_SEGMENTS = 720;
+
+            let currentAngle = 0;
+            let currentRadius = START_RADIUS;
+            let totalRevolutions = 0;
+            let animationId = null;
+            let spiralPoints = [];
+            let cursor = { x: 0, y: 0 };
+            let isRunning = true;
+            let lastTimestamp = 0;
+
+            // ----- АУДИО -----
+            let audioCtx = null;
+            let soundEnabled = true;
+            let audioUnlocked = false;
+            let droneOsc = null;
+            let droneGain = null;
+
+            function initAudio() {
+                if (audioCtx) return;
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    audioUnlocked = true;
+                    if (soundEnabled) startDrone();
+                } catch(e) {
+                    soundEnabled = false;
+                    updateSoundButton();
+                }
+            }
+
+            function startDrone() {
+                if (!audioCtx || !soundEnabled) return;
+                if (droneOsc) { try { droneOsc.stop(); } catch(e){} }
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                droneGain = gain;
+                osc.type = 'sine';
+                osc.frequency.value = 55;
+                gain.gain.setValueAtTime(0.03, now);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                droneOsc = osc;
+            }
+
+            function stopDrone() {
+                if (droneOsc) { try { droneOsc.stop(); } catch(e){}; droneOsc = null; }
+            }
+
+            function updateDroneFrequency(radius) {
+                if (droneOsc && droneGain && soundEnabled) {
+                    const freq = 40 + (radius * 0.15);
+                    droneOsc.frequency.setValueAtTime(Math.min(freq, 300), audioCtx.currentTime);
+                    droneGain.gain.setValueAtTime(0.02 + (radius * 0.0001), audioCtx.currentTime);
+                }
+            }
+
+            function createEpicTick(radius) {
+                if (!audioCtx || !soundEnabled) return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                const baseFreq = 200 + (radius * 0.1);
+                osc.frequency.setValueAtTime(baseFreq, now);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+
+            function toggleSound() {
+                if (!audioUnlocked) initAudio();
+                soundEnabled = !soundEnabled;
+                updateSoundButton();
+                if (soundEnabled) { startDrone(); } else { stopDrone(); }
+            }
+
+            function updateSoundButton() {
+                if (soundEnabled) {
+                    soundToggle.textContent = '🔊 Эпичный звук';
+                    soundToggle.classList.add('active');
+                } else {
+                    soundToggle.textContent = '🔇 Без звука';
+                    soundToggle.classList.remove('active');
+                }
+            }
+
+            // Автозапуск звука
+            function autoStartAudio() {
+                if (!audioUnlocked) {
+                    initAudio();
+                }
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().then(() => {
+                        if (soundEnabled) startDrone();
+                    });
+                } else if (audioCtx && audioCtx.state === 'running') {
+                    if (soundEnabled) startDrone();
+                }
+            }
+
+            autoStartAudio();
+
+            document.addEventListener('click', () => {
+                if (!audioUnlocked) initAudio();
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().then(() => {
+                        if (soundEnabled) startDrone();
+                    });
+                }
+            }, { once: false });
+
+            document.addEventListener('touchstart', () => {
+                if (!audioUnlocked) initAudio();
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().then(() => {
+                        if (soundEnabled) startDrone();
+                    });
+                }
+            }, { once: false });
+
+            setTimeout(autoStartAudio, 500);
+
+            soundToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleSound();
+            });
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            function getCenter() {
+                return { x: canvas.width / 2, y: canvas.height / 2 };
+            }
+
+            function drawScene() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (spiralPoints.length < 2) return;
+                ctx.beginPath();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = Math.max(2.5, 3.5);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.moveTo(spiralPoints[0].x, spiralPoints[0].y);
+                for (let i = 1; i < spiralPoints.length; i++) {
+                    ctx.lineTo(spiralPoints[i].x, spiralPoints[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = Math.max(4, 6);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                if (cursor.x && cursor.y) {
+                    const cursorSize = Math.max(6, 10);
+                    ctx.beginPath();
+                    ctx.arc(cursor.x, cursor.y, cursorSize, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 25;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.beginPath();
+                    ctx.arc(cursor.x, cursor.y, cursorSize * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                }
+            }
+
+            function addSpiralPoint(angle, radius) {
+                const center = getCenter();
+                const x = center.x + radius * Math.cos(angle);
+                const y = center.y + radius * Math.sin(angle);
+                spiralPoints.push({ x, y, angle, radius });
+                const maxPoints = 100000;
+                if (spiralPoints.length > maxPoints) {
+                    spiralPoints = spiralPoints.slice(-maxPoints);
+                }
+            }
+
+            function animationLoop(timestamp) {
+                if (!lastTimestamp) lastTimestamp = timestamp;
+                const deltaTime = Math.min(timestamp - lastTimestamp, 50);
+                lastTimestamp = timestamp;
+                if (isRunning) {
+                    const angleIncrement = DRAW_SPEED * (deltaTime / 16.67);
+                    const prevRevolutions = Math.floor(currentAngle / (Math.PI * 2));
+                    currentAngle += angleIncrement;
+                    currentRadius = START_RADIUS + (currentAngle / (Math.PI * 2)) * RADIUS_GROWTH;
+                    const newRevolutions = Math.floor(currentAngle / (Math.PI * 2));
+                    if (newRevolutions > prevRevolutions) {
+                        totalRevolutions = newRevolutions;
+                        counterEl.textContent = totalRevolutions;
+                        createEpicTick(currentRadius);
+                        statusEl.textContent = `Спираль — виток ${totalRevolutions} (r=${Math.round(currentRadius)})`;
+                    }
+                    if (Math.floor(currentAngle * 10) % 10 === 0) {
+                        updateDroneFrequency(currentRadius);
+                    }
+                    addSpiralPoint(currentAngle, currentRadius);
+                    const center = getCenter();
+                    cursor.x = center.x + currentRadius * Math.cos(currentAngle);
+                    cursor.y = center.y + currentRadius * Math.sin(currentAngle);
+                }
+                drawScene();
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            function restart() {
+                if (animationId) cancelAnimationFrame(animationId);
+                isRunning = true;
+                lastTimestamp = 0;
+                currentAngle = 0;
+                currentRadius = START_RADIUS;
+                totalRevolutions = 0;
+                spiralPoints = [];
+                const center = getCenter();
+                cursor = { x: center.x + START_RADIUS, y: center.y };
+                addSpiralPoint(0, START_RADIUS);
+                counterEl.textContent = '0';
+                statusEl.textContent = `Спираль — начинается (r=${Math.round(START_RADIUS)})`;
+                if (soundEnabled && audioCtx) startDrone();
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            restart();
+            document.getElementById('restartButton').addEventListener('click', restart);
+            console.log('🌀 Белая спираль на чёрном фоне. Непрерывное рисование.');
+        })();
+    </script>
+</body>
+</html>
