@@ -90,18 +90,8 @@
             border: 1px solid rgba(255,255,255,0.3);
         }
 
-        /* Когда телефон перевернут (landscape) — скрываем неудобные элементы */
-        @media (orientation: landscape) {
-            .ui-overlay {
-                display: none;
-            }
-            .status {
-                display: none;
-            }
-        }
-
-        /* Дополнительно для маленьких экранов в landscape */
-        @media (orientation: landscape) and (max-height: 500px) {
+        /* Только на телефонах в landscape скрываем элементы */
+        @media (max-width: 932px) and (orientation: landscape) {
             .ui-overlay {
                 display: none;
             }
@@ -134,9 +124,8 @@
             const DRAW_DURATION = 900;
             const MOVE_DURATION = 200;
 
-            // Для больших кругов увеличим количество сегментов динамически
             const MIN_SEGMENTS = 128;
-            const MAX_SEGMENTS = 720;  // очень плавно даже на огромных радиусах
+            const MAX_SEGMENTS = 720;
 
             let currentRadius = MIN_RADIUS;
             let circleCount = 0;
@@ -248,9 +237,7 @@
                 toggleSound();
             });
 
-            // ----- ПЛАВНОСТЬ КРУГОВ -----
             function getSegments(radius) {
-                // Чем больше радиус, тем больше сегментов нужно для плавности
                 if (radius < 200) return MIN_SEGMENTS;
                 if (radius > 2000) return MAX_SEGMENTS;
                 return Math.floor(MIN_SEGMENTS + (radius - 200) / (2000 - 200) * (MAX_SEGMENTS - MIN_SEGMENTS));
@@ -260,12 +247,9 @@
                 if (radius <= 0) return;
                 const segments = getSegments(radius);
                 const angleStep = (endAngle - startAngle) / segments;
-
                 ctx.beginPath();
                 ctx.strokeStyle = strokeStyle;
                 ctx.lineWidth = lineWidth;
-
-                // Рисуем дугу с большим количеством точек
                 for (let i = 0; i <= segments; i++) {
                     const angle = startAngle + angleStep * i;
                     const px = x + radius * Math.cos(angle);
@@ -298,19 +282,13 @@
             function drawScene() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 const center = getCenter();
-
-                // Завершённые круги — белые
                 for (const fc of finishedCircles) {
                     drawFullCircle(center.x, center.y, fc.radius, '#ffffff', Math.max(1.8, 2.5));
                 }
-
-                // Рисуемый круг — белая дуга
                 if (drawingCircle) {
                     const dc = drawingCircle;
                     drawSmoothCircle(center.x, center.y, dc.radius, 0, dc.angle, '#ffffff', Math.max(2.2, 3));
                 }
-
-                // Курсор — белая светящаяся точка
                 const cursorSize = Math.max(6, 10);
                 ctx.beginPath();
                 ctx.arc(cursor.x, cursor.y, cursorSize, 0, Math.PI * 2);
@@ -319,7 +297,6 @@
                 ctx.shadowBlur = 20;
                 ctx.fill();
                 ctx.shadowBlur = 0;
-
                 ctx.beginPath();
                 ctx.arc(cursor.x, cursor.y, cursorSize * 0.45, 0, Math.PI * 2);
                 ctx.fillStyle = '#ffffff';
@@ -334,7 +311,6 @@
                 circleCount++;
                 counterEl.textContent = circleCount;
                 currentRadius += RADIUS_STEP;
-
                 const center = getCenter();
                 moveStart = { x: cursor.x, y: cursor.y };
                 moveTarget = { x: center.x + currentRadius, y: center.y };
@@ -359,7 +335,6 @@
                 if (!lastTimestamp) lastTimestamp = timestamp;
                 lastTimestamp = timestamp;
                 const center = getCenter();
-
                 if (cursorState === 'moving') {
                     const elapsed = timestamp - moveStartTime;
                     const t = Math.min(elapsed / MOVE_DURATION, 1.0);
@@ -383,7 +358,6 @@
                         finishCircleAndPrepareNext();
                     }
                 }
-
                 drawScene();
                 animationId = requestAnimationFrame(animationLoop);
             }
@@ -399,7 +373,6 @@
                 cursorState = 'drawing';
                 const center = getCenter();
                 cursor = { x: center.x, y: center.y };
-
                 const now = performance.now();
                 drawingCircle = { radius: currentRadius, angle: 0, startTime: now };
                 createEpicSweep(80, 350, DRAW_DURATION / 1000);
