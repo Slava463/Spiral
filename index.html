@@ -89,6 +89,26 @@
             z-index: 20;
             border: 1px solid rgba(255,255,255,0.3);
         }
+
+        /* Когда телефон перевернут (landscape) — скрываем неудобные элементы */
+        @media (orientation: landscape) {
+            .ui-overlay {
+                display: none;
+            }
+            .status {
+                display: none;
+            }
+        }
+
+        /* Дополнительно для маленьких экранов в landscape */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .ui-overlay {
+                display: none;
+            }
+            .status {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
