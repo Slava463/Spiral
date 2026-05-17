@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Белая спираль на чёрном фоне · Настройка параметров</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000000;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-overlay {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            color: #ffffff;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+            z-index: 20;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px);
+            padding: 12px 28px;
+            border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.3);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .ui-overlay span {
+            font-weight: bold;
+            color: #ffd966;
+            font-size: 1.5rem;
+            margin: 0 6px;
+        }
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: #ffffff;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: 0.3s;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: #ffffff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        button.active {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+        .status {
+            position: fixed;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 22px;
+            border-radius: 20px;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            z-index: 20;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* Стили для панели настроек */
+        .settings-panel {
+            position: fixed;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(15px);
+            padding: 20px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.3);
+            z-index: 30;
+            min-width: 280px;
+            color: #ffffff;
+        }
+        .settings-panel h3 {
+            margin: 0 0 20px 0;
+            color: #ffd966;
+            font-size: 1.2rem;
+            text-align: center;
+        }
+        .setting-group {
+            margin-bottom: 18px;
+        }
+        .setting-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #cccccc;
+        }
+        .setting-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .setting-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ffd966;
+        }
+        .setting-value {
+            display: inline-block;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            color: #ffd966;
+            margin-left: 8px;
+            min-width: 50px;
+            text-align: center;
+        }
+        .toggle-settings {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 35;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .toggle-settings:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .settings-panel.hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .settings-panel {
+                right: 10px;
+                min-width: 250px;
+                padding: 15px;
+            }
+            .ui-overlay {
+                padding: 10px 20px;
+                gap: 10px;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Только на телефонах в landscape скрываем элементы */
+        @media (max-width: 932px) and (orientation: landscape) {
+            .ui-overlay {
+                display: none;
+            }
+            .status {
+                display: none;
+            }
+            .toggle-settings {
+                display: none;
+            }
+            .settings-panel {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="status" id="statusMsg">Спираль — виток 0, радиус 0px</div>
+    <button class="toggle-settings" id="toggleSettings">⚙ Настройки</button>
+
+    <div class="settings-panel" id="settingsPanel">
+        <h3>⚙ Параметры спирали</h3>
+        <div class="setting-group">
+            <label>Начальный радиус: <span class="setting-value" id="startRadiusValue">0</span> px</label>
+            <input type="range" id="startRadius" min="0" max="50" value="0" step="1">
+        </div>
+        <div class="setting-group">
+            <label>Рост радиуса: <span class="setting-value" id="radiusGrowthValue">10</span> px/виток</label>
+            <input type="range" id="radiusGrowth" min="1" max="50" value="10" step="0.5">
+        </div>
+        <div class="setting-group">
+            <label>Скорость рисования: <span class="setting-value" id="drawSpeedValue">0.04</span> рад/кадр</label>
+            <input type="range" id="drawSpeed" min="0.01" max="0.2" value="0.04" step="0.01">
+        </div>
+        <div class="setting-group">
+            <label>Толщина линии: <span class="setting-value" id="lineWidthValue">3</span> px</label>
+            <input type="range" id="lineWidth" min="1" max="8" value="3" step="0.5">
+        </div>
+        <button id="applySettings" style="width: 100%; margin-top: 10px;">🔄 Применить и перезапустить</button>
+    </div>
+
+    <div class="ui-overlay">
+        <div>🌀 Витков: <span id="spiralCounter">0</span></div>
+        <div>📏 Радиус: <span id="radiusDisplay">0</span> px</div>
+        <button id="restartButton">↺ Начать заново</button>
+    </div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const counterEl = document.getElementById('spiralCounter');
+            const radiusDisplayEl = document.getElementById('radiusDisplay');
+            const statusEl = document.getElementById('statusMsg');
+
+            const settingsPanel = document.getElementById('settingsPanel');
+            const toggleSettingsBtn = document.getElementById('toggleSettings');
+            const startRadiusInput = document.getElementById('startRadius');
+            const radiusGrowthInput = document.getElementById('radiusGrowth');
+            const drawSpeedInput = document.getElementById('drawSpeed');
+            const lineWidthInput = document.getElementById('lineWidth');
+
+            const startRadiusValueEl = document.getElementById('startRadiusValue');
+            const radiusGrowthValueEl = document.getElementById('radiusGrowthValue');
+            const drawSpeedValueEl = document.getElementById('drawSpeedValue');
+            const lineWidthValueEl = document.getElementById('lineWidthValue');
+
+            let START_RADIUS = 0;
+            let RADIUS_GROWTH = 10;
+            let DRAW_SPEED = 0.04;
+            let LINE_WIDTH = 3;
+
+            let currentAngle = 0;
+            let currentRadius = START_RADIUS;
+            let totalRevolutions = 0;
+            let animationId = null;
+            let spiralPoints = [];
+            let cursor = { x: 0, y: 0 };
+            let isRunning = true;
+            let lastTimestamp = 0;
+
+            toggleSettingsBtn.addEventListener('click', () => {
+                settingsPanel.classList.toggle('hidden');
+            });
+
+            function updateDisplayValues() {
+                startRadiusValueEl.textContent = startRadiusInput.value;
+                radiusGrowthValueEl.textContent = radiusGrowthInput.value;
+                drawSpeedValueEl.textContent = drawSpeedInput.value;
+                lineWidthValueEl.textContent = lineWidthInput.value;
+            }
+
+            startRadiusInput.addEventListener('input', updateDisplayValues);
+            radiusGrowthInput.addEventListener('input', updateDisplayValues);
+            drawSpeedInput.addEventListener('input', updateDisplayValues);
+            lineWidthInput.addEventListener('input', updateDisplayValues);
+
+            document.getElementById('applySettings').addEventListener('click', () => {
+                START_RADIUS = parseFloat(startRadiusInput.value);
+                RADIUS_GROWTH = parseFloat(radiusGrowthInput.value);
+                DRAW_SPEED = parseFloat(drawSpeedInput.value);
+                LINE_WIDTH = parseFloat(lineWidthInput.value);
+                updateDisplayValues();
+                restart();
+                settingsPanel.classList.add('hidden');
+            });
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            function getCenter() {
+                return { x: canvas.width / 2, y: canvas.height / 2 };
+            }
+
+            function drawScene() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (spiralPoints.length < 2) return;
+                ctx.beginPath();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = LINE_WIDTH;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.moveTo(spiralPoints[0].x, spiralPoints[0].y);
+                for (let i = 1; i < spiralPoints.length; i++) {
+                    ctx.lineTo(spiralPoints[i].x, spiralPoints[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = LINE_WIDTH * 1.5;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                if (cursor.x && cursor.y) {
+                    const cursorSize = Math.max(6, 10);
+                    ctx.beginPath();
+                    ctx.arc(cursor.x, cursor.y, cursorSize, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowColor = '#ffffff';
+                    ctx.shadowBlur = 25;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    ctx.beginPath();
+                    ctx.arc(cursor.x, cursor.y, cursorSize * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                }
+            }
+
+            function addSpiralPoint(angle, radius) {
+                const center = getCenter();
+                const x = center.x + radius * Math.cos(angle);
+                const y = center.y + radius * Math.sin(angle);
+                spiralPoints.push({ x, y, angle, radius });
+                const maxPoints = 100000;
+                if (spiralPoints.length > maxPoints) {
+                    spiralPoints = spiralPoints.slice(-maxPoints);
+                }
+            }
+
+            function animationLoop(timestamp) {
+                if (!lastTimestamp) lastTimestamp = timestamp;
+                const deltaTime = Math.min(timestamp - lastTimestamp, 50);
+                lastTimestamp = timestamp;
+                if (isRunning) {
+                    const angleIncrement = DRAW_SPEED * (deltaTime / 16.67);
+                    const prevRevolutions = Math.floor(currentAngle / (Math.PI * 2));
+                    currentAngle += angleIncrement;
+                    currentRadius = START_RADIUS + (currentAngle / (Math.PI * 2)) * RADIUS_GROWTH;
+                    const newRevolutions = Math.floor(currentAngle / (Math.PI * 2));
+                    if (newRevolutions > prevRevolutions) {
+                        totalRevolutions = newRevolutions;
+                        counterEl.textContent = totalRevolutions;
+                    }
+                    radiusDisplayEl.textContent = Math.round(currentRadius);
+                    statusEl.textContent = `Спираль — виток ${totalRevolutions}, радиус ${Math.round(currentRadius)}px`;
+                    addSpiralPoint(currentAngle, currentRadius);
+                    const center = getCenter();
+                    cursor.x = center.x + currentRadius * Math.cos(currentAngle);
+                    cursor.y = center.y + currentRadius * Math.sin(currentAngle);
+                }
+                drawScene();
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            function restart() {
+                if (animationId) cancelAnimationFrame(animationId);
+                isRunning = true;
+                lastTimestamp = 0;
+                currentAngle = 0;
+                currentRadius = START_RADIUS;
+                totalRevolutions = 0;
+                spiralPoints = [];
+                const center = getCenter();
+                cursor = { x: center.x + START_RADIUS, y: center.y };
+                addSpiralPoint(0, START_RADIUS);
+                counterEl.textContent = '0';
+                radiusDisplayEl.textContent = Math.round(START_RADIUS);
+                statusEl.textContent = `Спираль — виток 0, радиус ${Math.round(START_RADIUS)}px`;
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            updateDisplayValues();
+            restart();
+            document.getElementById('restartButton').addEventListener('click', restart);
+            console.log('🌀 Белая спираль на чёрном фоне. Настраиваемые параметры.');
+        })();
+    </script>
+</body>
+</html>
