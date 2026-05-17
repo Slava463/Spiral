@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Белые круги на чёрном фоне · Высокое качество</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000000;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-overlay {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            color: #ffffff;
+            font-size: 1.1rem;
+            letter-spacing: 0.5px;
+            z-index: 20;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(12px);
+            padding: 12px 28px;
+            border-radius: 40px;
+            border: 1px solid rgba(255,255,255,0.3);
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .ui-overlay span {
+            font-weight: bold;
+            color: #ffd966;
+            font-size: 1.5rem;
+            margin: 0 6px;
+        }
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: #ffffff;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+            transition: 0.3s;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: #ffffff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+        button.active {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+        .status {
+            position: fixed;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffffff;
+            font-size: 0.9rem;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 22px;
+            border-radius: 20px;
+            backdrop-filter: blur(8px);
+            pointer-events: none;
+            z-index: 20;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="status" id="statusMsg">Круг 1 — рисуется</div>
+    <div class="ui-overlay">
+        <div>🎯 Кругов: <span id="circleCounter">1</span></div>
+        <button id="restartButton">↺ Начать заново</button>
+        <button id="soundToggle" class="active">🔊 Эпичный звук</button>
+    </div>
+
+    <script>
+        (() => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const counterEl = document.getElementById('circleCounter');
+            const statusEl = document.getElementById('statusMsg');
+            const soundToggle = document.getElementById('soundToggle');
+
+            // ----- НАСТРОЙКИ -----
+            const MIN_RADIUS = 5;
+            const RADIUS_STEP = 4.5;
+            const DRAW_DURATION = 900;
+            const MOVE_DURATION = 200;
+
+            // Для больших кругов увеличим количество сегментов динамически
+            const MIN_SEGMENTS = 128;
+            const MAX_SEGMENTS = 720;  // очень плавно даже на огромных радиусах
+
+            let currentRadius = MIN_RADIUS;
+            let circleCount = 0;
+            let animationId = null;
+            let finishedCircles = [];
+            let drawingCircle = null;
+            let cursor = { x: 0, y: 0 };
+            let cursorState = 'drawing';
+            let moveStart = { x: 0, y: 0 };
+            let moveTarget = { x: 0, y: 0 };
+            let moveStartTime = 0;
+            let isRunning = true;
+            let lastTimestamp = 0;
+
+            // ----- АУДИО -----
+            let audioCtx = null;
+            let soundEnabled = true;
+            let audioUnlocked = false;
+            let droneOsc = null;
+
+            function initAudio() {
+                if (audioCtx) return;
+                try {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    audioUnlocked = true;
+                    if (soundEnabled) startDrone();
+                } catch(e) {
+                    soundEnabled = false;
+                    updateSoundButton();
+                }
+            }
+
+            function startDrone() {
+                if (!audioCtx || !soundEnabled) return;
+                if (droneOsc) { try { droneOsc.stop(); } catch(e){} }
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 55;
+                gain.gain.setValueAtTime(0.04, now);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                droneOsc = osc;
+            }
+
+            function stopDrone() {
+                if (droneOsc) { try { droneOsc.stop(); } catch(e){}; droneOsc = null; }
+            }
+
+            function createEpicSweep(startFreq, endFreq, duration) {
+                if (!audioCtx || !soundEnabled) return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(startFreq, now);
+                osc.frequency.linearRampToValueAtTime(endFreq, now + duration);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + duration + 0.1);
+            }
+
+            function createEpicHit(radius) {
+                if (!audioCtx || !soundEnabled) return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                const baseFreq = 150 + (radius * 0.2);
+                osc.frequency.setValueAtTime(baseFreq, now);
+                osc.frequency.exponentialRampToValueAtTime(baseFreq * 2.5, now + 0.15);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            }
+
+            function toggleSound() {
+                if (!audioUnlocked) initAudio();
+                soundEnabled = !soundEnabled;
+                updateSoundButton();
+                if (soundEnabled) { startDrone(); } else { stopDrone(); }
+            }
+
+            function updateSoundButton() {
+                if (soundEnabled) {
+                    soundToggle.textContent = '🔊 Эпичный звук';
+                    soundToggle.classList.add('active');
+                } else {
+                    soundToggle.textContent = '🔇 Без звука';
+                    soundToggle.classList.remove('active');
+                }
+            }
+
+            document.addEventListener('click', () => {
+                if (!audioUnlocked) initAudio();
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            }, { once: false });
+
+            soundToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleSound();
+            });
+
+            // ----- ПЛАВНОСТЬ КРУГОВ -----
+            function getSegments(radius) {
+                // Чем больше радиус, тем больше сегментов нужно для плавности
+                if (radius < 200) return MIN_SEGMENTS;
+                if (radius > 2000) return MAX_SEGMENTS;
+                return Math.floor(MIN_SEGMENTS + (radius - 200) / (2000 - 200) * (MAX_SEGMENTS - MIN_SEGMENTS));
+            }
+
+            function drawSmoothCircle(x, y, radius, startAngle, endAngle, strokeStyle, lineWidth) {
+                if (radius <= 0) return;
+                const segments = getSegments(radius);
+                const angleStep = (endAngle - startAngle) / segments;
+
+                ctx.beginPath();
+                ctx.strokeStyle = strokeStyle;
+                ctx.lineWidth = lineWidth;
+
+                // Рисуем дугу с большим количеством точек
+                for (let i = 0; i <= segments; i++) {
+                    const angle = startAngle + angleStep * i;
+                    const px = x + radius * Math.cos(angle);
+                    const py = y + radius * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+
+            function drawFullCircle(x, y, radius, strokeStyle, lineWidth) {
+                drawSmoothCircle(x, y, radius, 0, Math.PI * 2, strokeStyle, lineWidth);
+            }
+
+            function easeInOutCubic(t) {
+                return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            }
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            function getCenter() {
+                return { x: canvas.width / 2, y: canvas.height / 2 };
+            }
+
+            function drawScene() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const center = getCenter();
+
+                // Завершённые круги — белые
+                for (const fc of finishedCircles) {
+                    drawFullCircle(center.x, center.y, fc.radius, '#ffffff', Math.max(1.8, 2.5));
+                }
+
+                // Рисуемый круг — белая дуга
+                if (drawingCircle) {
+                    const dc = drawingCircle;
+                    drawSmoothCircle(center.x, center.y, dc.radius, 0, dc.angle, '#ffffff', Math.max(2.2, 3));
+                }
+
+                // Курсор — белая светящаяся точка
+                const cursorSize = Math.max(6, 10);
+                ctx.beginPath();
+                ctx.arc(cursor.x, cursor.y, cursorSize, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 20;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.beginPath();
+                ctx.arc(cursor.x, cursor.y, cursorSize * 0.45, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+            }
+
+            function finishCircleAndPrepareNext() {
+                if (!drawingCircle) return;
+                finishedCircles.push({ radius: drawingCircle.radius });
+                createEpicHit(drawingCircle.radius);
+                drawingCircle = null;
+                circleCount++;
+                counterEl.textContent = circleCount;
+                currentRadius += RADIUS_STEP;
+
+                const center = getCenter();
+                moveStart = { x: cursor.x, y: cursor.y };
+                moveTarget = { x: center.x + currentRadius, y: center.y };
+                moveStartTime = performance.now();
+                cursorState = 'moving';
+                statusEl.textContent = `Круг ${circleCount + 1} — движется`;
+            }
+
+            function startDrawingNextCircle() {
+                const now = performance.now();
+                drawingCircle = {
+                    radius: currentRadius,
+                    angle: 0,
+                    startTime: now
+                };
+                cursorState = 'drawing';
+                createEpicSweep(80 + currentRadius * 0.5, 300 + currentRadius * 1.5, DRAW_DURATION / 1000);
+                statusEl.textContent = `Круг ${circleCount + 1} — рисуется (r=${Math.round(currentRadius)})`;
+            }
+
+            function animationLoop(timestamp) {
+                if (!lastTimestamp) lastTimestamp = timestamp;
+                lastTimestamp = timestamp;
+                const center = getCenter();
+
+                if (cursorState === 'moving') {
+                    const elapsed = timestamp - moveStartTime;
+                    const t = Math.min(elapsed / MOVE_DURATION, 1.0);
+                    const easedT = easeInOutCubic(t);
+                    cursor.x = moveStart.x + (moveTarget.x - moveStart.x) * easedT;
+                    cursor.y = moveStart.y + (moveTarget.y - moveStart.y) * easedT;
+                    if (t >= 1.0) {
+                        cursor.x = moveTarget.x;
+                        cursor.y = moveTarget.y;
+                        startDrawingNextCircle();
+                    }
+                } else if (cursorState === 'drawing' && drawingCircle) {
+                    const dc = drawingCircle;
+                    const elapsed = timestamp - dc.startTime;
+                    const progress = Math.min(elapsed / DRAW_DURATION, 1.0);
+                    dc.angle = easeInOutCubic(progress) * Math.PI * 2;
+                    cursor.x = center.x + dc.radius * Math.cos(dc.angle);
+                    cursor.y = center.y + dc.radius * Math.sin(dc.angle);
+                    if (progress >= 1.0) {
+                        dc.angle = Math.PI * 2;
+                        finishCircleAndPrepareNext();
+                    }
+                }
+
+                drawScene();
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            function restart() {
+                if (animationId) cancelAnimationFrame(animationId);
+                isRunning = true;
+                lastTimestamp = 0;
+                currentRadius = MIN_RADIUS;
+                circleCount = 0;
+                finishedCircles = [];
+                drawingCircle = null;
+                cursorState = 'drawing';
+                const center = getCenter();
+                cursor = { x: center.x, y: center.y };
+
+                const now = performance.now();
+                drawingCircle = { radius: currentRadius, angle: 0, startTime: now };
+                createEpicSweep(80, 350, DRAW_DURATION / 1000);
+                statusEl.textContent = `Круг 1 — рисуется (r=${Math.round(currentRadius)})`;
+                counterEl.textContent = '1';
+                if (soundEnabled && audioCtx) startDrone();
+                animationId = requestAnimationFrame(animationLoop);
+            }
+
+            restart();
+            document.getElementById('restartButton').addEventListener('click', restart);
+            console.log('⚪ Белые круги на чёрном фоне. Плавность до 720 сегментов.');
+        })();
+    </script>
+</body>
+</html>
